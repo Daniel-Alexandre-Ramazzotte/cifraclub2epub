@@ -155,11 +155,27 @@ def parse_main_cifra(html: str) -> dict | None:
     """
     soup = BeautifulSoup(html, "html.parser")
 
-    # Metadados
-    title_tag = soup.find("h1", class_=re.compile(r"title|cifra", re.I)) or soup.find("h1")
-    artist_tag = soup.find("h2", class_=re.compile(r"artist|artista", re.I)) or soup.find("h2")
-    title = title_tag.get_text(strip=True) if title_tag else "Desconhecido"
-    artist = artist_tag.get_text(strip=True) if artist_tag else "Desconhecido"
+    # Metadados — prioriza o <title> da página, que tem o formato
+    # "Música - Artista - Cifra Club" e é mais confiável que varrer h1/h2
+    # (há h1 de seções como "Toque também" que confundem a heurística).
+    title = artist = None
+    title_tag_doc = soup.find("title")
+    if title_tag_doc:
+        parts = [p.strip() for p in title_tag_doc.get_text().split(" - ")]
+        # Descarta o sufixo "Cifra Club"
+        parts = [p for p in parts if p and p.lower() != "cifra club"]
+        if len(parts) >= 2:
+            title, artist = parts[0], parts[1]
+        elif len(parts) == 1:
+            title = parts[0]
+
+    # Fallback: h1.t1 (título da cifra) ou primeiro h1/h2
+    if not title:
+        h1 = soup.find("h1", class_="t1") or soup.find("h1")
+        title = h1.get_text(strip=True) if h1 else "Desconhecido"
+    if not artist:
+        h2 = soup.find("h2", class_=re.compile(r"artist|artista", re.I)) or soup.find("h2")
+        artist = h2.get_text(strip=True) if h2 else "Desconhecido"
 
     chord_text = None
 
