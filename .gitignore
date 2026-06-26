@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.epub
+.cache/
+.venv/
+venv/
+*.html
