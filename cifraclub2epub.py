@@ -309,6 +309,82 @@ def strip_embedded_tabs(text: str) -> str:
     return "\n".join(filtered)
 
 
+# ── Filtro de trechos sem letra ───────────────────────────────────────────────
+
+_CHORD_RE = re.compile(
+    r"\b([A-G][#b]?(?:m|maj|min|dim|aug|sus|add)?(?:\d+)?(?:[#b]\d+)?(?:/[A-G][#b]?)?)\b"
+)
+
+
+def _is_section(line: str) -> bool:
+    """Cabeçalho de seção puro, ex.: '[Primeira Parte]'."""
+    return bool(re.match(r"\s*\[.*\]\s*$", line))
+
+
+def _strip_leading_tag(line: str) -> str:
+    """Remove um rótulo de seção no início da linha (ex.: '[Intro] Am G' → 'Am G')."""
+    return re.sub(r"^\s*\[[^\]]*\]\s*", "", line)
+
+
+def _is_chord_line(line: str) -> bool:
+    """Linha essencialmente de acordes — inclusive com rótulo inline (ex.: '[Intro] Em G').
+
+    Conta apenas letras fora dos acordes (ignora dígitos e pontuação como 'x2', '(4)').
+    """
+    if not line.strip() or _is_section(line):
+        return False
+    rest = _strip_leading_tag(line)
+    if not rest.strip():
+        return False
+    outside = re.sub(r"[^A-Za-z]", "", _CHORD_RE.sub("", rest))
+    return len(outside) <= 4 and bool(_CHORD_RE.search(rest))
+
+
+def _is_lyric_line(line: str) -> bool:
+    return bool(line.strip()) and not _is_section(line) and not _is_chord_line(line)
+
+
+def strip_lyricless_chords(text: str) -> str:
+    """Remove trechos só de acordes, sem letra (intros, solos, finais instrumentais).
+
+    Mantém uma linha de acorde apenas quando a próxima linha não-vazia é letra;
+    e descarta cabeçalhos de seção (ex.: [Intro], [Solo]) que ficarem sem conteúdo.
+    """
+    lines = text.split("\n")
+    n = len(lines)
+
+    # 1) Mantém linha de acorde só se a próxima linha não-vazia for letra
+    kept = []
+    for i, line in enumerate(lines):
+        if _is_chord_line(line):
+            j = i + 1
+            while j < n and not lines[j].strip():
+                j += 1
+            if j < n and _is_lyric_line(lines[j]):
+                kept.append(line)
+            # senão: trecho instrumental → descarta
+        else:
+            kept.append(line)
+
+    # 2) Descarta cabeçalhos de seção que ficaram sem conteúdo
+    out = []
+    m = len(kept)
+    for i, line in enumerate(kept):
+        if _is_section(line):
+            j = i + 1
+            has_content = False
+            while j < m and not _is_section(kept[j]):
+                if kept[j].strip():
+                    has_content = True
+                    break
+                j += 1
+            if not has_content:
+                continue
+        out.append(line)
+
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
+
+
 # ── Construção do EPUB ────────────────────────────────────────────────────────
 
 CSS = """
@@ -458,9 +534,14 @@ def main() -> int:
         # Tablatura
         include_tab = ask_yn("  Incluir tablatura?", default=False)
 
+        # Remover trechos instrumentais (sem letra)
+        only_lyrics = ask_yn("  Remover trechos sem letra (intro/solo/final)?", default=True)
+
         text = data["chord_text"]
         if not include_tab:
             text = strip_embedded_tabs(text)
+        if only_lyrics:
+            text = strip_lyricless_chords(text)
         if shift:
             text = transpose_text(text, shift)
 

@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 *.epub
+*.pdf
 .cache/
 .venv/
 venv/

@@ -7,6 +7,7 @@ CLI para baixar cifras do [Cifra Club](https://www.cifraclub.com.br/), transpor 
 - Aceita URL do Cifra Club ou entrada manual de artista/música
 - Transposição de acordes por semitom (suporta voicings complexos: `F#m7b5`, `D/F#`, etc.)
 - Opção de incluir ou remover tablatura
+- Opção de remover trechos sem letra (intros, solos e finais instrumentais), mantendo só as partes cantadas
 - Gera EPUB com fonte monoespaçada e formatação adequada para Kindle
 - Copia automática para `~/storage/downloads/`
 - Abre cliente de email pre-preenchido com seu endereço `@kindle.com`
