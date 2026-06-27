@@ -385,6 +385,27 @@ def strip_lyricless_chords(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
 
 
+def strip_to_lyrics(text: str) -> str:
+    """Versão só com a letra: remove todas as linhas de acorde, mantendo letra
+    e cabeçalhos de seção com conteúdo (ex.: [Refrão])."""
+    lines = [l for l in text.split("\n") if not _is_chord_line(l)]
+    out = []
+    m = len(lines)
+    for i, line in enumerate(lines):
+        if _is_section(line):
+            j = i + 1
+            has_content = False
+            while j < m and not _is_section(lines[j]):
+                if lines[j].strip():
+                    has_content = True
+                    break
+                j += 1
+            if not has_content:
+                continue
+        out.append(line)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
+
+
 # ── Construção do EPUB ────────────────────────────────────────────────────────
 
 CSS = """

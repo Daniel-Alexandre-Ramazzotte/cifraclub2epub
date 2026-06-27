@@ -8,8 +8,37 @@ from bs4 import BeautifulSoup
 sys.path.insert(0, str(Path(__file__).parent))
 from cifraclub2epub import (
     slugify, build_url, fetch_page, parse_main_cifra,
-    strip_embedded_tabs, strip_lyricless_chords, build_epub, CSS,
+    strip_embedded_tabs, strip_lyricless_chords, strip_to_lyrics, build_epub, CSS,
 )
+
+
+def render_pdf(items, out_dir, base, title, subtitle, key):
+    """Monta HTML a partir de items[key] e converte para PDF via LibreOffice."""
+    parts = [
+        "<html><head><meta charset='utf-8'><style>", CSS,
+        "h1{page-break-before:always;} .first{page-break-before:avoid;}",
+        f"</style></head><body><h1 class='first' style='font-size:1.8em'>{htmlmod.escape(title)}</h1>",
+        f"<p style='font-family:sans-serif'>{htmlmod.escape(subtitle)}</p>",
+    ]
+    for c in items:
+        parts.append(
+            f"<h1>{htmlmod.escape(c['title'])}</h1>"
+            f"<h2>{htmlmod.escape(c['artist'])}</h2>"
+            f"<pre>{htmlmod.escape(c[key])}</pre>"
+        )
+    parts.append("</body></html>")
+    html_path = out_dir / f"{base}.html"
+    html_path.write_text("".join(parts), encoding="utf-8")
+    subprocess.run(
+        ["soffice", "--headless", "--convert-to", "pdf", "--outdir", str(out_dir), str(html_path)],
+        check=True, timeout=180, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    pdf_path = out_dir / f"{base}.pdf"
+    if pdf_path.exists():
+        print(f"✓ PDF:  {pdf_path} ({pdf_path.stat().st_size/1024:.1f} KB)")
+    else:
+        print(f"⚠ PDF não gerado: {base}")
+    return pdf_path
 
 TITLE = "Setlist · MPB & Pop pra Cantar Junto"
 
@@ -79,14 +108,16 @@ def main():
             print("✗ FALHOU")
             falhas.append((i, song, primary))
             continue
-        text = strip_embedded_tabs(data["chord_text"])  # tom original: sem transpor
-        text = strip_lyricless_chords(text)             # remove intros/solos sem letra
+        base_text = strip_embedded_tabs(data["chord_text"])   # tom original: sem transpor
+        text = strip_lyricless_chords(base_text)              # remove intros/solos sem letra
+        lyrics = strip_to_lyrics(base_text)                   # versão só com a letra
         tom = data.get("tom") or "?"
         cifras.append({
             "n": i,
             "title": f"{i:02d}. {data['title']}",
             "artist": f"{data['artist']}  ·  Tom original: {tom}",
             "chord_text": text,
+            "lyrics": lyrics,
         })
         print(f"✓ (tom {tom})")
 
@@ -103,35 +134,13 @@ def main():
     build_epub(cifras, epub_path, TITLE)
     print(f"\n✓ EPUB: {epub_path} ({epub_path.stat().st_size/1024:.1f} KB)")
 
-    # HTML para o PDF
-    parts = [
-        "<html><head><meta charset='utf-8'><style>",
-        CSS,
-        "h1{page-break-before:always;} .first{page-break-before:avoid;}",
-        f"</style></head><body><h1 class='first' style='font-size:1.8em'>{htmlmod.escape(TITLE)}</h1>",
-        "<p style='font-family:sans-serif'>Cifras no tom original — gerado pelo cifraclub2epub.</p>",
-    ]
-    for c in cifras:
-        parts.append(
-            f"<h1>{htmlmod.escape(c['title'])}</h1>"
-            f"<h2>{htmlmod.escape(c['artist'])}</h2>"
-            f"<pre>{htmlmod.escape(c['chord_text'])}</pre>"
-        )
-    parts.append("</body></html>")
-    html_path.write_text("".join(parts), encoding="utf-8")
+    # PDF com cifras (tom original)
+    render_pdf(cifras, out_dir, base, TITLE,
+               "Cifras no tom original — gerado pelo cifraclub2epub.", "chord_text")
 
-    # HTML -> PDF via LibreOffice
-    subprocess.run(
-        ["soffice", "--headless", "--convert-to", "pdf",
-         "--outdir", str(out_dir), str(html_path)],
-        check=True, timeout=180,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
-    pdf_path = out_dir / f"{base}.pdf"
-    if pdf_path.exists():
-        print(f"✓ PDF:  {pdf_path} ({pdf_path.stat().st_size/1024:.1f} KB)")
-    else:
-        print("⚠ PDF não foi gerado pelo LibreOffice.")
+    # PDF só com a letra
+    render_pdf(cifras, out_dir, f"{base}-letras", f"{TITLE} — Só Letras",
+               "Versão só com a letra — gerado pelo cifraclub2epub.", "lyrics")
 
     if falhas:
         print("\n⚠ Não baixadas (ajustar artista/slug):")
